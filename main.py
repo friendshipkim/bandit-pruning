@@ -38,6 +38,7 @@ algo_dict = {"UCB1": UCB1([], []),
              "Exp3": Exp3(exp3_gamma, []),
              }
 
+
 def main():
     parser = argparse.ArgumentParser()
     # Required parameters
