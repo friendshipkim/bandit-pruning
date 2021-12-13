@@ -120,7 +120,7 @@ def main():
         raise Exception("'block_num' necessary for this pruning type")
 
     pruning_type = 'head' if args.pruning_type == 'head' \
-        else 'headwhole' if 'headwhole' in args.pruning_type \
+        else 'head_whole' if 'head_whole' in args.pruning_type \
         else 'neuron'
 
     # load dataset
@@ -171,7 +171,7 @@ def main():
 
     # bandit configs
     n_arms = n_heads if pruning_type == 'head' \
-        else n_layers * n_heads if pruning_type == 'headwhole' \
+        else n_layers * n_heads if pruning_type == 'head_whole' \
         else hidden_dim
 
     # hyperparameters
@@ -203,7 +203,7 @@ def main():
                 print('Remaining heads: {} -- Now prune {}th head'.format(n_heads - t - 1, prune_idx))
                 zeroize_head_weights(model, block_num, prune_idx)
 
-            elif pruning_type == 'headwhole':  # whole layers
+            elif pruning_type == 'head_whole':  # whole layers
                 block_num = prune_idx // n_heads
                 head_num = prune_idx % n_heads
                 print('Now prune {}th block {}th head -- Remaining heads: {}'.format(block_num, head_num, n_arms - t - 1))
@@ -232,7 +232,7 @@ def main():
                 # prune head
                 zeroize_head_weights(model, block_num, chosen_arm)
 
-            elif pruning_type == 'headwhole': # whole layers
+            elif pruning_type == 'head_whole': # whole layers
                 block_num = chosen_arm // n_heads
                 head_num = chosen_arm % n_heads
                 print('chosen_arm: {}th block {}th head'.format(block_num, head_num))
@@ -257,7 +257,7 @@ def main():
             if accuracy increases after pruning (delta > 0), reward = min(thres + delta
             if accuracy decreases after pruning (delta < 0), reward = max(0, thres + delta)
             """
-            if args.pruning_type == "headwhole_nothres":
+            if args.pruning_type == "head_whole_nothres":
                 reward = delta_accuracy
             else:
                 reward = max(0, thres + delta_accuracy)
@@ -288,7 +288,7 @@ def main():
                 print('Remaining heads: {} -- Now prune {}th head'.format(n_heads - t - 1, prune_idx))
                 zeroize_head_weights(model, block_num, prune_idx)
 
-            elif pruning_type == 'headwhole':  # whole layers
+            elif pruning_type == 'head_whole':  # whole layers
                 block_num = prune_idx // n_heads
                 head_num = prune_idx % n_heads
                 print('Now prune {}th block {}th head -- Remaining heads: {}'.format(block_num, head_num, n_arms - t - 1))
@@ -306,7 +306,7 @@ def main():
             print()
 
     # save data
-    result_path = os.path.join('./results', args.pruning_type, algo_name) if pruning_type == 'headwhole' \
+    result_path = os.path.join('./results', args.pruning_type, algo_name) if pruning_type == 'head_whole' \
         else os.path.join('./results', pruning_type, str(block_num), algo_name)
     print('result_path:', result_path)
 
