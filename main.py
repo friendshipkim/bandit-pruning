@@ -74,77 +74,39 @@ def main():
         help="Pruning type: one of ['head', 'head_whole', 'head_whole_nothres', 'head_whole_ablation', 'neuron']",
     )
 
-    # Other parameters
     parser.add_argument(
-        "--config_name",
-        default="",
-        type=str,
-        help="Pretrained config name or path if not the same as model_name_or_path",
+        "--rounds",
+        default=None,
+        type=int,
+        required=True,
+        help="How many rounds to play MAB algorithm",
     )
+
     parser.add_argument(
-        "--tokenizer_name",
-        default="",
-        type=str,
-        help="Pretrained tokenizer name or path if not the same as model_name_or_path",
-    )
-    parser.add_argument(
-        "--cache_dir",
+        "--algo_name",
         default=None,
         type=str,
-        help="Where do you want to store the pre-trained models downloaded from huggingface.co",
-    )
-    parser.add_argument(
-        "--data_subset", type=int, default=-1, help="If > 0: limit the data to a subset of data_subset instances."
-    )
-    parser.add_argument(
-        "--overwrite_output_dir", action="store_true", help="Whether to overwrite data in output directory"
-    )
-    parser.add_argument(
-        "--overwrite_cache", action="store_true", help="Overwrite the cached training and evaluation sets"
+        required=True,
+        help="MAB algorithm type / Random",
     )
 
     parser.add_argument(
-        "--dont_normalize_importance_by_layer", action="store_true", help="Don't normalize importance score by layers"
-    )
-    parser.add_argument(
-        "--dont_normalize_global_importance",
-        action="store_true",
-        help="Don't normalize all importance scores between 0 and 1",
-    )
-
-    parser.add_argument(
-        "--try_masking", action="store_true", help="Whether to try to mask head until a threshold of accuracy."
-    )
-    parser.add_argument(
-        "--masking_threshold",
-        default=0.9,
+        "--thres",
+        default=None,
         type=float,
-        help="masking threshold in term of metrics (stop masking when metric < threshold * original metric value).",
+        help="Threshold of accuracy drop",
     )
-    parser.add_argument(
-        "--masking_amount", default=0.1, type=float, help="Amount to heads to masking at each masking step."
-    )
-    parser.add_argument("--metric_name", default="acc", type=str, help="Metric to use for head masking.")
-
-    parser.add_argument(
-        "--max_seq_length",
-        default=128,
-        type=int,
-        help="The maximum total input sequence length after WordPiece tokenization. \n"
-        "Sequences longer than this will be truncated, sequences shorter padded.",
-    )
-    parser.add_argument("--batch_size", default=1, type=int, help="Batch size.")
-
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
-    parser.add_argument("--no_cuda", action="store_true", help="Whether not to use CUDA when available")
-    parser.add_argument("--server_ip", type=str, default="", help="Can be used for distant debugging.")
-    parser.add_argument("--server_port", type=str, default="", help="Can be used for distant debugging.")
+    parser.add_argument("--seed", type=int, default=2021)
 
     args = parser.parse_args()
 
+    # assert
     if args.pruning_type not in ['head', 'head_whole', 'head_whole_nothres', 'head_whole_ablation', 'neuron']:
         raise Exception("Invalid pruning type")
+    if args.algo_name not in algo_dict.keys() and not 'random':
+        raise Exception("Invalid algo name")
+    if args.thres is None and args.pruning_type is not 'head_whole_nothres':
+        raise Exception("'thres' necessary for this pruning type")
 
     # load dataset
     encoded_dataset = load_from_disk(args.data_dir)
@@ -195,14 +157,14 @@ def main():
     arms = np.arange(n_arms)
 
     # hyperparameters
-    rounds = 2000  # Playing times
-    # thres = 0.2 # maximum reward
-    algo_name = "Softmax"
+    rounds = args.rounds  # Playing times
+    thres = args.thres # maximum reward
+    algo_name = args.algo_name
 
     # choose algo
     algo = algo_dict[algo_name]
     algo.initialize(n_arms)
-    prng = np.random.RandomState(2021)
+    prng = np.random.RandomState(args.seed)
     start_time = time.time()
 
     # bandit playing
@@ -228,16 +190,16 @@ def main():
         print("delta_accuracy:", delta_accuracy)
         print("delta_loss:", delta_loss)
 
-        # ver1 prune by accuracy # TBD
+        # ver1 prune by accuracy
         """
         if accuracy increases after pruning (delta > 0), reward = min(thres + delta
         if accuracy decreases after pruning (delta < 0), reward = max(0, thres + delta)
         """
-        reward = delta_accuracy
-        #     reward = max(0, thres + delta_accuracy)
+        if args.pruning_type == "headwhole_nothres":
+            reward = delta_accuracy
+        else:
+            reward = max(0, thres + delta_accuracy)
         print("reward:", reward)
-
-        index = chosen_arm
 
         algo.update(chosen_arm, reward)
         print()
@@ -273,22 +235,22 @@ def main():
 
     # save data
     result_path = os.path.join('./results', args.pruning_type, algo_name)
-    print(result_path)
+    print('result_path:', result_path)
 
     # Create a new directory if it does not exist
-    if not os.path.exists(result_path):
-        os.makedirs(result_path)
-        print("The new directory is created!")
-
-    if algo_name == 'Exp3':
-        np.save(os.path.join(result_path, "expected_rewards.npy"), algo.weights)
-        np.save(os.path.join(result_path, "prune_order.npy"), prune_order)
-        np.save(os.path.join(result_path, "prune_after_accuracy.npy"), prune_after_accuracy)
-    else:
-        np.save(os.path.join(result_path, "counts.npy"), algo.counts)
-        np.save(os.path.join(result_path, "expected_rewards.npy"), algo.values)
-        np.save(os.path.join(result_path, "prune_order.npy"), prune_order)
-        np.save(os.path.join(result_path, "prune_after_accuracy.npy"), prune_after_accuracy)
+    # if not os.path.exists(result_path):
+    #     os.makedirs(result_path)
+    #     print("The new directory is created!")
+    #
+    # if algo_name == 'Exp3':
+    #     np.save(os.path.join(result_path, "expected_rewards.npy"), algo.weights)
+    #     np.save(os.path.join(result_path, "prune_order.npy"), prune_order)
+    #     np.save(os.path.join(result_path, "prune_after_accuracy.npy"), prune_after_accuracy)
+    # else:
+    #     np.save(os.path.join(result_path, "counts.npy"), algo.counts)
+    #     np.save(os.path.join(result_path, "expected_rewards.npy"), algo.values)
+    #     np.save(os.path.join(result_path, "prune_order.npy"), prune_order)
+    #     np.save(os.path.join(result_path, "prune_after_accuracy.npy"), prune_after_accuracy)
 
 if __name__ == "__main__":
     main()
